@@ -3,6 +3,7 @@ name = "sqv"
 version = "0.1.0"
 description = "A fast, lightweight SQLite database viewer TUI"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "textual>=0.89.0",
