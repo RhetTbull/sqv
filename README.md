@@ -8,6 +8,14 @@ A fast, lightweight SQLite database viewer TUI built with Python and Textual.
 - **Data Tab**: View table data with sorting and filtering
 - **SQL Tab**: Execute arbitrary SQL queries
 
+## Screenshots
+
+![sqv structure screenshot](https://raw.githubusercontent.com/RhetTbull/sqv/main/screenshots/structure_view.png)
+
+![sqv data screenshot](https://raw.githubusercontent.com/RhetTbull/sqv/main/screenshots/data_view.png)
+
+![sqv sql screenshot](https://raw.githubusercontent.com/RhetTbull/sqv/main/screenshots/sql_view.png)
+
 ## Installation
 
 I recommend installation with [uv](https://docs.astral.sh/uv/).
