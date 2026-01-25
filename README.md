@@ -10,7 +10,22 @@ A fast, lightweight SQLite database viewer TUI built with Python and Textual.
 
 ## Installation
 
+I recommend installation with [uv](https://docs.astral.sh/uv/).
+
 ```bash
+uv tool install sqv
+```
+
+Or to run without installing:
+
+```bash
+uv tool run sqv
+```
+
+To install from source:
+
+```bash
+git clone git@github.com:RhetTbull/sqv.git
 uv sync
 ```
 
