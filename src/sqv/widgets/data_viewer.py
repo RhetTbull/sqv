@@ -30,6 +30,11 @@ class DataViewerTab(Vertical):
 
     DataViewerTab > Horizontal > Button {
         width: auto;
+        min-width: 5;
+    }
+
+    DataViewerTab > Horizontal > #clear-filter {
+        min-width: 3;
     }
 
     DataViewerTab > DataTable {
@@ -63,6 +68,7 @@ class DataViewerTab(Vertical):
             yield Select(options, prompt="Select table", id="table-select")
             yield Input(placeholder="WHERE clause (e.g., id > 10)", id="filter-input")
             yield Button("Apply", id="apply-filter")
+            yield Button("✕", id="clear-filter", variant="error")
 
         yield DataTable(id="data-table")
         yield Static("Select a table to view data", id="status-bar")
@@ -87,6 +93,16 @@ class DataViewerTab(Vertical):
         """Handle button clicks."""
         if event.button.id == "apply-filter":
             self._apply_filter()
+        elif event.button.id == "clear-filter":
+            self._clear_filter()
+
+    def _clear_filter(self) -> None:
+        """Clear the WHERE filter."""
+        filter_input = self.query_one("#filter-input", Input)
+        filter_input.value = ""
+        self.where_clause = None
+        self.current_offset = 0
+        self._load_data()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle Enter key in filter input."""
@@ -106,7 +122,7 @@ class DataViewerTab(Vertical):
         if not self.current_table:
             return
 
-        column_key = str(event.column_key)
+        column_key = event.column_key.value
         if self.order_by == column_key:
             # Toggle direction
             self.order_dir = "DESC" if self.order_dir == "ASC" else "ASC"
