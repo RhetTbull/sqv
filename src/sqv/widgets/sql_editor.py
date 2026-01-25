@@ -3,91 +3,66 @@
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.widgets import Button, DataTable, Static, TextArea
+from textual.widgets import DataTable, Static, TabbedContent, TabPane, TextArea
 
 from sqv.db import DatabaseConnection
 
-
-class SQLInput(TextArea):
-    """Text area for SQL input with execution binding."""
-
-    BINDINGS = [
-        Binding("ctrl+enter", "execute", "Execute SQL", show=True),
-    ]
-
-    def __init__(self) -> None:
-        super().__init__(language="sql", id="sql-input")
-        self.text = "SELECT * FROM sqlite_master LIMIT 10;"
+MAX_QUERIES = 5
 
 
-class SQLTab(Vertical):
-    """SQL execution tab."""
+class QueryPane(Vertical):
+    """A single query pane with SQL input, results, and status."""
 
     DEFAULT_CSS = """
-    SQLTab {
-        height: 100%;
+    QueryPane {
+        height: 1fr;
     }
 
-    SQLTab > SQLInput {
-        height: 40%;
+    QueryPane > TextArea {
+        height: 35%;
         border: solid $primary;
     }
 
-    SQLTab > Vertical > Button {
-        margin: 1;
-        width: auto;
-    }
-
-    SQLTab > DataTable {
-        height: 50%;
+    QueryPane > DataTable {
+        height: 1fr;
         border: solid $primary;
     }
 
-    SQLTab > Static {
+    QueryPane > Static {
         height: auto;
         padding: 0 1;
         background: $surface;
+        color: $text-muted;
     }
     """
 
-    BINDINGS = [
-        Binding("ctrl+enter", "execute_sql", "Execute SQL", show=True),
-    ]
-
-    def __init__(self, db: DatabaseConnection) -> None:
+    def __init__(self, db: DatabaseConnection, query_id: int) -> None:
         super().__init__()
         self.db = db
+        self.query_id = query_id
 
     def compose(self) -> ComposeResult:
-        yield SQLInput()
-        with Vertical():
-            yield Button("Run (Ctrl+Enter)", id="run-button", variant="primary")
-        yield DataTable(id="results-table")
-        yield Static("Enter SQL and press Ctrl+Enter or click Run", id="sql-status")
+        yield TextArea(
+            "SELECT * FROM sqlite_master LIMIT 10;",
+            language="sql",
+            id=f"sql-input-{self.query_id}",
+        )
+        yield DataTable(id=f"results-{self.query_id}")
+        yield Static(
+            "Ctrl+Enter to run | Ctrl+T to add query | Alt+1-5 to switch",
+            id=f"status-{self.query_id}",
+        )
 
     def on_mount(self) -> None:
         """Set up the results table."""
-        table = self.query_one("#results-table", DataTable)
+        table = self.query_one(f"#results-{self.query_id}", DataTable)
         table.cursor_type = "row"
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle run button click."""
-        if event.button.id == "run-button":
-            self._execute_sql()
-
-    def action_execute_sql(self) -> None:
-        """Execute SQL action."""
-        self._execute_sql()
-
-    def on_text_area_changed(self, event: TextArea.Changed) -> None:
-        """Handle text area changes - needed to keep focus working."""
-        pass
-
-    def _execute_sql(self) -> None:
-        """Execute the SQL in the input."""
-        sql_input = self.query_one("#sql-input", TextArea)
-        results_table = self.query_one("#results-table", DataTable)
-        status = self.query_one("#sql-status", Static)
+    def execute_sql(self) -> None:
+        """Execute the SQL in this pane's input."""
+        sql_input = self.query_one(f"#sql-input-{self.query_id}", TextArea)
+        results_table = self.query_one(f"#results-{self.query_id}", DataTable)
+        status = self.query_one(f"#status-{self.query_id}", Static)
 
         sql = sql_input.text.strip()
         if not sql:
@@ -111,3 +86,84 @@ class SQLTab(Vertical):
         except Exception as e:
             results_table.clear(columns=True)
             status.update(f"Error: {e}")
+
+
+class SQLTab(Vertical):
+    """SQL execution tab with multiple query panes."""
+
+    DEFAULT_CSS = """
+    SQLTab {
+        height: 1fr;
+    }
+
+    SQLTab > #query-tabs {
+        height: 1fr;
+    }
+
+    SQLTab #query-tabs > ContentSwitcher {
+        height: 1fr;
+    }
+
+    SQLTab #query-tabs TabPane {
+        height: 1fr;
+        padding: 0;
+    }
+
+    SQLTab #query-tabs TabPane > * {
+        height: 1fr;
+    }
+    """
+
+    BINDINGS = [
+        Binding("ctrl+enter", "execute_sql", "Execute", show=True),
+        Binding("ctrl+t", "add_query", "+Query", show=True),
+        Binding("alt+1", "switch_query(1)", "Q1", show=False),
+        Binding("alt+2", "switch_query(2)", "Q2", show=False),
+        Binding("alt+3", "switch_query(3)", "Q3", show=False),
+        Binding("alt+4", "switch_query(4)", "Q4", show=False),
+        Binding("alt+5", "switch_query(5)", "Q5", show=False),
+    ]
+
+    def __init__(self, db: DatabaseConnection) -> None:
+        super().__init__()
+        self.db = db
+        self.query_count = 1
+
+    def compose(self) -> ComposeResult:
+        with TabbedContent(id="query-tabs"), TabPane("Query 1", id="query-pane-1"):
+            yield QueryPane(self.db, 1)
+
+    def action_add_query(self) -> None:
+        """Add a new query pane."""
+        self._add_query()
+
+    def _add_query(self) -> None:
+        """Add a new query tab."""
+        if self.query_count >= MAX_QUERIES:
+            self.notify(f"Maximum of {MAX_QUERIES} queries reached", severity="warning")
+            return
+
+        self.query_count += 1
+        tabs = self.query_one("#query-tabs", TabbedContent)
+        new_pane = TabPane(f"Query {self.query_count}", id=f"query-pane-{self.query_count}")
+        new_pane.compose_add_child(QueryPane(self.db, self.query_count))
+        tabs.add_pane(new_pane)
+        tabs.active = f"query-pane-{self.query_count}"
+
+    def action_switch_query(self, query_num: int) -> None:
+        """Switch to a specific query tab."""
+        if query_num > self.query_count:
+            return
+        tabs = self.query_one("#query-tabs", TabbedContent)
+        tabs.active = f"query-pane-{query_num}"
+
+    def action_execute_sql(self) -> None:
+        """Execute SQL in the active query pane."""
+        tabs = self.query_one("#query-tabs", TabbedContent)
+        active_id = tabs.active
+        if active_id:
+            # Extract query number from pane id (e.g., "query-pane-1" -> 1)
+            query_num = active_id.split("-")[-1]
+            pane = self.query_one(f"#query-pane-{query_num}", TabPane)
+            query_pane = pane.query_one(QueryPane)
+            query_pane.execute_sql()

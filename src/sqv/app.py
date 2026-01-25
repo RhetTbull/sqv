@@ -16,16 +16,17 @@ class SQVApp(App):
     TITLE = "sqv - SQLite Viewer"
 
     CSS = """
-    TabbedContent {
+    #tabs {
         height: 1fr;
     }
 
-    ContentSwitcher {
+    #tabs > ContentSwitcher {
         height: 1fr;
     }
 
-    TabPane {
+    #tabs TabPane {
         padding: 0;
+        height: 1fr;
     }
 
     StructureTab {
@@ -37,6 +38,23 @@ class SQVApp(App):
     }
 
     SQLTab {
+        height: 1fr;
+    }
+
+    /* Nested TabbedContent in SQLTab */
+    SQLTab TabbedContent {
+        height: 1fr;
+    }
+
+    SQLTab ContentSwitcher {
+        height: 1fr;
+    }
+
+    SQLTab TabPane {
+        height: 1fr;
+    }
+
+    QueryPane {
         height: 1fr;
     }
     """
