@@ -117,6 +117,7 @@ class SQLTab(Vertical):
     BINDINGS = [
         Binding("ctrl+enter", "execute_sql", "Execute", show=True),
         Binding("ctrl+t", "add_query", "+Query", show=True),
+        Binding("ctrl+c", "copy_query", "Copy", show=False),
         Binding("alt+1", "switch_query(1)", "Q1", show=False),
         Binding("alt+2", "switch_query(2)", "Q2", show=False),
         Binding("alt+3", "switch_query(3)", "Q3", show=False),
@@ -156,6 +157,19 @@ class SQLTab(Vertical):
             return
         tabs = self.query_one("#query-tabs", TabbedContent)
         tabs.active = f"query-pane-{query_num}"
+
+    def action_copy_query(self) -> None:
+        """Copy the current query to clipboard."""
+        tabs = self.query_one("#query-tabs", TabbedContent)
+        active_id = tabs.active
+        if active_id:
+            query_num = active_id.split("-")[-1]
+            pane = self.query_one(f"#query-pane-{query_num}", TabPane)
+            sql_input = pane.query_one(f"#sql-input-{query_num}", TextArea)
+            sql = sql_input.text
+            if sql:
+                self.app.copy_to_clipboard(sql)
+                self.notify("Query copied to clipboard", severity="information")
 
     def action_execute_sql(self) -> None:
         """Execute SQL in the active query pane."""
