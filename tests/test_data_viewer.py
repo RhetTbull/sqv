@@ -165,10 +165,10 @@ def test_binary_data(blob_db_path: Path) -> None:
         assert viewer._format_cell("[bold]text[/bold]") == r"\[bold]text\[/bold]"
         assert viewer._format_cell("normal text") == "normal text"
 
-        # Test text truncation
+        # Test text truncation (MAX_CELL_LENGTH is 120)
         long_text = "x" * 200
         result = viewer._format_cell(long_text)
-        assert len(result) == 103  # 100 chars + "..."
+        assert len(result) == 123  # 120 chars + "..."
         assert result.endswith("...")
 
         # Short text should not be truncated

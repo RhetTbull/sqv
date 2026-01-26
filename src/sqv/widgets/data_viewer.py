@@ -1,11 +1,14 @@
 """Data viewer widgets for browsing table contents."""
 
+import time
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Input, Select, Static
 
 from sqv.db import DatabaseConnection
+from sqv.widgets.cell_viewer import CellViewerScreen
 
 
 class DataViewerTab(Vertical):
@@ -73,6 +76,7 @@ class DataViewerTab(Vertical):
         Binding("pageup", "prev_page", "Prev Page", show=False),
         Binding("home", "first_page", "First Page", show=False),
         Binding("end", "last_page", "Last Page", show=False),
+        Binding("enter", "view_cell", "View Cell", show=False),
     ]
 
     def __init__(self, db: DatabaseConnection) -> None:
@@ -86,6 +90,9 @@ class DataViewerTab(Vertical):
         self.order_dir = "ASC"
         self.where_clause: str | None = None
         self.columns: list[str] = []
+        self.current_rows: list[tuple] = []  # Raw data for current page
+        self._last_highlight: tuple[int, int, float] = (-1, -1, 0.0)  # row, col, time
+        self._last_select: tuple[int, int, float] = (-1, -1, 0.0)  # row, col, time
 
     def compose(self) -> ComposeResult:
         tables = self.db.get_tables()
@@ -114,7 +121,56 @@ class DataViewerTab(Vertical):
     def on_mount(self) -> None:
         """Set up the data table."""
         table = self.query_one("#data-table", DataTable)
-        table.cursor_type = "row"
+        table.cursor_type = "cell"
+
+    def on_data_table_cell_highlighted(self, event: DataTable.CellHighlighted) -> None:
+        """Track highlighted cell for Enter key detection."""
+        self._last_highlight = (event.coordinate.row, event.coordinate.column, time.time())
+
+    def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
+        """Handle cell selection - detect double-click or Enter on highlighted cell."""
+        row_idx = event.coordinate.row
+        col_idx = event.coordinate.column
+        now = time.time()
+
+        highlight_row, highlight_col, highlight_time = self._last_highlight
+        select_row, select_col, select_time = self._last_select
+
+        # Check for keyboard Enter: cell was highlighted > 100ms ago
+        time_since_highlight = now - highlight_time
+        if (row_idx == highlight_row and col_idx == highlight_col
+                and time_since_highlight > 0.1):
+            self._show_cell_viewer(row_idx, col_idx)
+            self._last_select = (row_idx, col_idx, now)
+            return
+
+        # Check for mouse double-click: same cell selected within 500ms
+        time_since_select = now - select_time
+        if (row_idx == select_row and col_idx == select_col
+                and time_since_select < 0.5):
+            self._show_cell_viewer(row_idx, col_idx)
+
+        # Track this selection for double-click detection
+        self._last_select = (row_idx, col_idx, now)
+
+    def _show_cell_viewer(self, row_idx: int, col_idx: int) -> None:
+        """Show the cell viewer modal for the given cell."""
+        if not self.current_rows or row_idx >= len(self.current_rows):
+            return
+        if not self.columns or col_idx >= len(self.columns):
+            return
+
+        column_name = self.columns[col_idx]
+        value = self.current_rows[row_idx][col_idx]
+        self.app.push_screen(CellViewerScreen(column_name, value))
+
+    def action_view_cell(self) -> None:
+        """View the currently selected cell in a popup."""
+        table = self.query_one("#data-table", DataTable)
+        if table.cursor_coordinate:
+            row_idx = table.cursor_coordinate.row
+            col_idx = table.cursor_coordinate.column
+            self._show_cell_viewer(row_idx, col_idx)
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Handle table selection."""
@@ -236,6 +292,7 @@ class DataViewerTab(Vertical):
             )
 
             self.columns = columns
+            self.current_rows = list(rows)  # Store raw data for cell viewer
             table_widget.clear(columns=True)
 
             for col in columns:
