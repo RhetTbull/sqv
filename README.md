@@ -16,6 +16,8 @@ A fast, lightweight SQLite database viewer TUI built with Python and Textual.
 
 ![sqv sql screenshot](https://raw.githubusercontent.com/RhetTbull/sqv/main/screenshots/sql_view.png)
 
+![sqv sql screenshot](https://raw.githubusercontent.com/RhetTbull/sqv/main/screenshots/cell_view.png)
+
 ## Installation
 
 I recommend installation with [uv](https://docs.astral.sh/uv/).
