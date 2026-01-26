@@ -2,6 +2,7 @@
 
 import csv
 import json
+import re
 import time
 from pathlib import Path
 
@@ -25,6 +26,207 @@ from sqv.db import DatabaseConnection
 from sqv.widgets.cell_viewer import CellViewerScreen
 
 MAX_QUERIES = 5
+
+SQL_KEYWORDS = [
+    "ABORT",
+    "ACTION",
+    "ADD",
+    "AFTER",
+    "ALL",
+    "ALTER",
+    "ANALYZE",
+    "AND",
+    "AS",
+    "ASC",
+    "ATTACH",
+    "AUTOINCREMENT",
+    "BEFORE",
+    "BEGIN",
+    "BETWEEN",
+    "BY",
+    "CASCADE",
+    "CASE",
+    "CAST",
+    "CHECK",
+    "COLLATE",
+    "COLUMN",
+    "COMMIT",
+    "CONFLICT",
+    "CONSTRAINT",
+    "CREATE",
+    "CROSS",
+    "CURRENT_DATE",
+    "CURRENT_TIME",
+    "CURRENT_TIMESTAMP",
+    "DATABASE",
+    "DEFAULT",
+    "DEFERRABLE",
+    "DEFERRED",
+    "DELETE",
+    "DESC",
+    "DISTINCT",
+    "DROP",
+    "EACH",
+    "ELSE",
+    "END",
+    "ESCAPE",
+    "EXCEPT",
+    "EXCLUSIVE",
+    "EXISTS",
+    "EXPLAIN",
+    "FAIL",
+    "FILTER",
+    "FOR",
+    "FOREIGN",
+    "FROM",
+    "FULL",
+    "GLOB",
+    "GROUP",
+    "HAVING",
+    "IF",
+    "IGNORE",
+    "IMMEDIATE",
+    "IN",
+    "INDEX",
+    "INDEXED",
+    "INITIALLY",
+    "INNER",
+    "INSERT",
+    "INSTEAD",
+    "INTERSECT",
+    "INTO",
+    "IS",
+    "ISNULL",
+    "JOIN",
+    "KEY",
+    "LEFT",
+    "LIKE",
+    "LIMIT",
+    "MATCH",
+    "NATURAL",
+    "NO",
+    "NOT",
+    "NOTNULL",
+    "NULL",
+    "OF",
+    "OFFSET",
+    "ON",
+    "OR",
+    "ORDER",
+    "OUTER",
+    "PLAN",
+    "PRAGMA",
+    "PRIMARY",
+    "QUERY",
+    "RAISE",
+    "RECURSIVE",
+    "REFERENCES",
+    "REGEXP",
+    "REINDEX",
+    "RELEASE",
+    "RENAME",
+    "REPLACE",
+    "RESTRICT",
+    "RIGHT",
+    "ROLLBACK",
+    "ROW",
+    "SAVEPOINT",
+    "SELECT",
+    "SET",
+    "TABLE",
+    "TEMP",
+    "TEMPORARY",
+    "THEN",
+    "TO",
+    "TRANSACTION",
+    "TRIGGER",
+    "UNION",
+    "UNIQUE",
+    "UPDATE",
+    "USING",
+    "VACUUM",
+    "VALUES",
+    "VIEW",
+    "VIRTUAL",
+    "WHEN",
+    "WHERE",
+    "WITH",
+    "WITHOUT",
+]
+
+
+class SQLTextArea(TextArea):
+    """TextArea with simple inline SQL autocompletion."""
+
+    WORD_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\\.]*)$")
+
+    def __init__(
+        self,
+        completions: list[str],
+        table_columns: dict[str, list[str]],
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._completions = completions
+        self._table_columns = table_columns
+
+    def update_suggestion(self) -> None:
+        """Update the inline suggestion based on current cursor position."""
+        self.suggestion = ""
+        row, col = self.cursor_location
+        if row < 0 or row >= len(self.document.lines):
+            return
+
+        line = self.document.lines[row]
+        if col < len(line):
+            next_char = line[col]
+            if next_char.isalnum() or next_char == "_" or next_char == ".":
+                return
+
+        prefix = line[:col]
+        match = self.WORD_RE.search(prefix)
+        if not match:
+            return
+
+        token = match.group(1)
+        if not token:
+            return
+
+        candidates = self._completions
+        if "." in token:
+            table_prefix = token.split(".", 1)[0]
+            for table_name, columns in self._table_columns.items():
+                if table_name.lower() == table_prefix.lower():
+                    candidates = [f"{table_name}.{col}" for col in columns]
+                    break
+
+        token_lower = token.lower()
+        matched = [
+            self._apply_case(candidate, token)
+            for candidate in candidates
+            if candidate.lower().startswith(token_lower)
+        ]
+        if not matched:
+            return
+
+        matched.sort(key=lambda value: (len(value), value))
+        best = matched[0]
+        if best == token:
+            return
+        self.suggestion = best[len(token) :]
+
+    def watch_selection(self, _selection) -> None:
+        """Refresh suggestions when the cursor moves."""
+        self.update_suggestion()
+
+    @staticmethod
+    def _apply_case(candidate: str, token: str) -> str:
+        if token.islower():
+            return candidate.lower()
+        if token.isupper():
+            return candidate.upper()
+        return candidate
 
 
 class ExportScreen(ModalScreen[tuple[str, str] | None]):
@@ -178,6 +380,8 @@ class QueryPane(Vertical):
         super().__init__()
         self.db = db
         self.query_id = query_id
+        self._table_columns = self._build_table_columns()
+        self._completions = self._build_completions()
         self.last_columns: list[str] = []
         self.last_rows: list[tuple] = []
         self.current_offset = 0
@@ -185,7 +389,9 @@ class QueryPane(Vertical):
         self._last_select: tuple[int, int, float] = (-1, -1, 0.0)  # row, col, time
 
     def compose(self) -> ComposeResult:
-        yield TextArea(
+        yield SQLTextArea(
+            self._completions,
+            self._table_columns,
             "",
             language="sql",
             theme="monokai",
@@ -199,10 +405,31 @@ class QueryPane(Vertical):
             yield Button("Next ▶", id="next-page", disabled=True)
             yield Button("▶▶", id="last-page", disabled=True)
         yield Static(
-            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate",
+            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate | Right to accept suggestion",
             id=f"status-{self.query_id}",
             classes="status",
         )
+
+    def _build_table_columns(self) -> dict[str, list[str]]:
+        table_columns: dict[str, list[str]] = {}
+        for table in self.db.get_tables():
+            try:
+                table_columns[table] = [col[0] for col in self.db.get_columns(table)]
+            except Exception:
+                table_columns[table] = []
+        return table_columns
+
+    def _build_completions(self) -> list[str]:
+        tables = self.db.get_tables()
+        views = self.db.get_views()
+        columns = sorted(
+            {col for cols in self._table_columns.values() for col in cols}
+        )
+        completions = list(SQL_KEYWORDS)
+        completions.extend(tables)
+        completions.extend(views)
+        completions.extend(columns)
+        return completions
 
     def on_mount(self) -> None:
         """Set up the results table."""
