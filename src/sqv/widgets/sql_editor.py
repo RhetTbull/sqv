@@ -221,7 +221,11 @@ class QueryPane(Vertical):
 
     def on_data_table_cell_highlighted(self, event: DataTable.CellHighlighted) -> None:
         """Track highlighted cell for Enter key detection."""
-        self._last_highlight = (event.coordinate.row, event.coordinate.column, time.time())
+        self._last_highlight = (
+            event.coordinate.row,
+            event.coordinate.column,
+            time.time(),
+        )
 
     def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
         """Handle cell selection - detect double-click or Enter on highlighted cell."""
@@ -234,16 +238,18 @@ class QueryPane(Vertical):
 
         # Check for keyboard Enter: cell was highlighted > 100ms ago
         time_since_highlight = now - highlight_time
-        if (row_idx == highlight_row and col_idx == highlight_col
-                and time_since_highlight > 0.1):
+        if (
+            row_idx == highlight_row
+            and col_idx == highlight_col
+            and time_since_highlight > 0.1
+        ):
             self._show_cell_viewer(row_idx, col_idx)
             self._last_select = (row_idx, col_idx, now)
             return
 
         # Check for mouse double-click: same cell selected within 500ms
         time_since_select = now - select_time
-        if (row_idx == select_row and col_idx == select_col
-                and time_since_select < 0.5):
+        if row_idx == select_row and col_idx == select_col and time_since_select < 0.5:
             self._show_cell_viewer(row_idx, col_idx)
 
         # Track this selection for double-click detection
@@ -340,6 +346,9 @@ class QueryPane(Vertical):
 
         for row in page_rows:
             results_table.add_row(*[self._format_cell(v) for v in row])
+
+        # Force immediate column width calculation
+        results_table.refresh()
 
         # Update page info
         total = len(self.last_rows)
