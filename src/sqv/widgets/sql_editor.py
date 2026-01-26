@@ -416,13 +416,23 @@ class SQLTab(Vertical):
             return
 
         self.query_count += 1
+        query_id = self.query_count
         tabs = self.query_one("#query-tabs", TabbedContent)
-        new_pane = TabPane(
-            f"Query {self.query_count}", id=f"query-pane-{self.query_count}"
-        )
-        new_pane.compose_add_child(QueryPane(self.db, self.query_count))
+        new_pane = TabPane(f"Query {query_id}", id=f"query-pane-{query_id}")
+        new_pane.compose_add_child(QueryPane(self.db, query_id))
         tabs.add_pane(new_pane)
-        tabs.active = f"query-pane-{self.query_count}"
+        tabs.active = f"query-pane-{query_id}"
+
+        # Focus the new query's TextArea after it's mounted
+        def focus_new_input() -> None:
+            try:
+                pane = self.query_one(f"#query-pane-{query_id}", TabPane)
+                sql_input = pane.query_one(f"#sql-input-{query_id}", TextArea)
+                sql_input.focus()
+            except Exception:
+                pass
+
+        self.call_later(focus_new_input)
 
     def action_switch_query(self, query_num: int) -> None:
         """Switch to a specific query tab."""
