@@ -83,11 +83,11 @@ class SQVApp(App):
         self.sub_title = self.db_path
         yield Header()
         with TabbedContent(id="tabs"):
-            with TabPane("Database Structure", id="structure"):
+            with TabPane("[u]D[/u]atabase Structure", id="structure"):
                 yield StructureTab(self.db)
-            with TabPane("Browse Data", id="data"):
+            with TabPane("[u]B[/u]rowse Data", id="data"):
                 yield DataViewerTab(self.db)
-            with TabPane("Execute SQL", id="sql"):
+            with TabPane("[u]E[/u]xecute SQL", id="sql"):
                 yield SQLTab(self.db)
         yield Footer()
 
