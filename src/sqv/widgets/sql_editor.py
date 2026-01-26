@@ -146,7 +146,23 @@ class QueryPane(Vertical):
         border: solid $primary;
     }
 
-    QueryPane > Static {
+    QueryPane > #nav-bar {
+        height: auto;
+        padding: 0 1;
+        align: center middle;
+    }
+
+    QueryPane > #nav-bar > Button {
+        min-width: 8;
+        margin: 0 1;
+    }
+
+    QueryPane > #nav-bar > Static {
+        width: auto;
+        padding: 0 2;
+    }
+
+    QueryPane > Static.status {
         height: auto;
         padding: 0 1;
         background: $surface;
@@ -154,12 +170,15 @@ class QueryPane(Vertical):
     }
     """
 
+    PAGE_SIZE = 500
+
     def __init__(self, db: DatabaseConnection, query_id: int) -> None:
         super().__init__()
         self.db = db
         self.query_id = query_id
         self.last_columns: list[str] = []
         self.last_rows: list[tuple] = []
+        self.current_offset = 0
 
     def compose(self) -> ComposeResult:
         yield TextArea(
@@ -168,15 +187,33 @@ class QueryPane(Vertical):
             id=f"sql-input-{self.query_id}",
         )
         yield DataTable(id=f"results-{self.query_id}")
+        with Horizontal(id="nav-bar"):
+            yield Button("◀◀", id="first-page", disabled=True)
+            yield Button("◀ Prev", id="prev-page", disabled=True)
+            yield Static("No results", id="page-info")
+            yield Button("Next ▶", id="next-page", disabled=True)
+            yield Button("▶▶", id="last-page", disabled=True)
         yield Static(
-            "Ctrl+Enter to run | Ctrl+E to export | Ctrl+T new query",
+            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate",
             id=f"status-{self.query_id}",
+            classes="status",
         )
 
     def on_mount(self) -> None:
         """Set up the results table."""
         table = self.query_one(f"#results-{self.query_id}", DataTable)
         table.cursor_type = "row"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle navigation button clicks."""
+        if event.button.id == "next-page":
+            self._next_page()
+        elif event.button.id == "prev-page":
+            self._prev_page()
+        elif event.button.id == "first-page":
+            self._first_page()
+        elif event.button.id == "last-page":
+            self._last_page()
 
     def _format_cell(self, value: object) -> str:
         """Format a cell value for display, handling binary data and escaping markup."""
@@ -194,7 +231,6 @@ class QueryPane(Vertical):
     def execute_sql(self) -> None:
         """Execute the SQL in this pane's input."""
         sql_input = self.query_one(f"#sql-input-{self.query_id}", TextArea)
-        results_table = self.query_one(f"#results-{self.query_id}", DataTable)
         status = self.query_one(f"#status-{self.query_id}", Static)
 
         sql = sql_input.text.strip()
@@ -205,24 +241,89 @@ class QueryPane(Vertical):
         try:
             columns, rows, elapsed = self.db.execute_sql(sql)
 
-            # Store for export
+            # Store for export and pagination
             self.last_columns = columns
             self.last_rows = rows
+            self.current_offset = 0
 
-            # Clear and populate results
-            results_table.clear(columns=True)
+            # Display first page
+            self._display_current_page()
 
-            for col in columns:
-                results_table.add_column(col, key=col)
-
-            for row in rows:
-                results_table.add_row(*[self._format_cell(v) for v in row])
-
-            status.update(f"Success: {len(rows)} rows returned in {elapsed:.4f}s")
+            status.update(f"Success: {len(rows):,} rows returned in {elapsed:.4f}s")
 
         except Exception as e:
+            results_table = self.query_one(f"#results-{self.query_id}", DataTable)
             results_table.clear(columns=True)
+            self._update_nav_buttons()
             status.update(f"Error: {e}")
+
+    def _display_current_page(self) -> None:
+        """Display the current page of results."""
+        results_table = self.query_one(f"#results-{self.query_id}", DataTable)
+        page_info = self.query_one("#page-info", Static)
+
+        results_table.clear(columns=True)
+
+        if not self.last_columns:
+            page_info.update("No results")
+            self._update_nav_buttons()
+            return
+
+        for col in self.last_columns:
+            results_table.add_column(col, key=col)
+
+        # Get current page slice
+        start = self.current_offset
+        end = min(start + self.PAGE_SIZE, len(self.last_rows))
+        page_rows = self.last_rows[start:end]
+
+        for row in page_rows:
+            results_table.add_row(*[self._format_cell(v) for v in row])
+
+        # Update page info
+        total = len(self.last_rows)
+        if total > 0:
+            page_info.update(f"Rows {start + 1:,}-{end:,} of {total:,}")
+        else:
+            page_info.update("No results")
+
+        self._update_nav_buttons()
+
+    def _update_nav_buttons(self) -> None:
+        """Update navigation button states."""
+        total = len(self.last_rows)
+        has_prev = self.current_offset > 0
+        has_next = self.current_offset + self.PAGE_SIZE < total
+
+        self.query_one("#first-page", Button).disabled = not has_prev
+        self.query_one("#prev-page", Button).disabled = not has_prev
+        self.query_one("#next-page", Button).disabled = not has_next
+        self.query_one("#last-page", Button).disabled = not has_next
+
+    def _next_page(self) -> None:
+        """Go to next page."""
+        if self.current_offset + self.PAGE_SIZE < len(self.last_rows):
+            self.current_offset += self.PAGE_SIZE
+            self._display_current_page()
+
+    def _prev_page(self) -> None:
+        """Go to previous page."""
+        if self.current_offset > 0:
+            self.current_offset = max(0, self.current_offset - self.PAGE_SIZE)
+            self._display_current_page()
+
+    def _first_page(self) -> None:
+        """Go to first page."""
+        if self.current_offset > 0:
+            self.current_offset = 0
+            self._display_current_page()
+
+    def _last_page(self) -> None:
+        """Go to last page."""
+        total = len(self.last_rows)
+        if total > self.PAGE_SIZE:
+            self.current_offset = ((total - 1) // self.PAGE_SIZE) * self.PAGE_SIZE
+            self._display_current_page()
 
     def export_results(self, fmt: str, filename: str) -> str | None:
         """Export results to file. Returns error message or None on success."""
@@ -289,6 +390,10 @@ class SQLTab(Vertical):
         Binding("alt+3", "switch_query(3)", "Q3", show=False),
         Binding("alt+4", "switch_query(4)", "Q4", show=False),
         Binding("alt+5", "switch_query(5)", "Q5", show=False),
+        Binding("pagedown", "next_page", "Next Page", show=False),
+        Binding("pageup", "prev_page", "Prev Page", show=False),
+        Binding("home", "first_page", "First Page", show=False),
+        Binding("end", "last_page", "Last Page", show=False),
     ]
 
     def __init__(self, db: DatabaseConnection) -> None:
@@ -363,11 +468,40 @@ class SQLTab(Vertical):
 
     def action_execute_sql(self) -> None:
         """Execute SQL in the active query pane."""
+        query_pane = self._get_active_query_pane()
+        if query_pane:
+            query_pane.execute_sql()
+
+    def _get_active_query_pane(self) -> QueryPane | None:
+        """Get the active QueryPane."""
         tabs = self.query_one("#query-tabs", TabbedContent)
         active_id = tabs.active
         if active_id:
-            # Extract query number from pane id (e.g., "query-pane-1" -> 1)
             query_num = active_id.split("-")[-1]
             pane = self.query_one(f"#query-pane-{query_num}", TabPane)
-            query_pane = pane.query_one(QueryPane)
-            query_pane.execute_sql()
+            return pane.query_one(QueryPane)
+        return None
+
+    def action_next_page(self) -> None:
+        """Go to next page of results."""
+        query_pane = self._get_active_query_pane()
+        if query_pane:
+            query_pane._next_page()
+
+    def action_prev_page(self) -> None:
+        """Go to previous page of results."""
+        query_pane = self._get_active_query_pane()
+        if query_pane:
+            query_pane._prev_page()
+
+    def action_first_page(self) -> None:
+        """Go to first page of results."""
+        query_pane = self._get_active_query_pane()
+        if query_pane:
+            query_pane._first_page()
+
+    def action_last_page(self) -> None:
+        """Go to last page of results."""
+        query_pane = self._get_active_query_pane()
+        if query_pane:
+            query_pane._last_page()
