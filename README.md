@@ -29,7 +29,7 @@ uv tool install sqv
 Or to run without installing:
 
 ```bash
-uv tool run sqv
+uv tool run sqv <database.db>
 ```
 
 To install from source:
@@ -42,15 +42,16 @@ uv sync
 ## Usage
 
 ```bash
-uv run sqv <database.db>
+sqv <database.db>
 ```
 
 ## Key Bindings
 
 | Key | Action |
 |-----|--------|
-| 0 | Go to Structure tab |
-| 1 | Go to Data tab |
-| 2 | Go to SQL tab |
-| q | Quit |
+| d | Go to Database Structure tab |
+| b | Go to Browse Data tab |
+| e | Go to Execute SQL tab |
+| Ctrl+q | Quit |
 | Ctrl+Enter | Execute SQL (in SQL tab) |
+| ? | Show help |
