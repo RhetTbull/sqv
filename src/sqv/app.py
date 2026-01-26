@@ -60,9 +60,9 @@ class SQVApp(App):
     """
 
     BINDINGS = [
-        Binding("0", "switch_tab('structure')", "Structure", show=True),
-        Binding("1", "switch_tab('data')", "Data", show=True),
-        Binding("2", "switch_tab('sql')", "SQL", show=True),
+        Binding("d", "switch_tab('structure')", "Database Structure", show=True),
+        Binding("b", "switch_tab('data')", "Browse Data", show=True),
+        Binding("e", "switch_tab('sql')", "Execute SQL", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -83,11 +83,11 @@ class SQVApp(App):
         self.sub_title = self.db_path
         yield Header()
         with TabbedContent(id="tabs"):
-            with TabPane("Structure", id="structure"):
+            with TabPane("Database Structure", id="structure"):
                 yield StructureTab(self.db)
-            with TabPane("Data", id="data"):
+            with TabPane("Browse Data", id="data"):
                 yield DataViewerTab(self.db)
-            with TabPane("SQL", id="sql"):
+            with TabPane("Execute SQL", id="sql"):
                 yield SQLTab(self.db)
         yield Footer()
 

@@ -13,13 +13,15 @@ def main() -> None:
         description="A fast, lightweight SQLite database viewer TUI.",
         epilog="""
 Key bindings:
-  0, 1, 2      Switch between Structure, Data, and SQL tabs
+  d            Database Structure tab
+  b            Browse Data tab
+  e            Execute SQL tab
   q            Quit
-  Ctrl+Enter   Execute SQL query (in SQL tab)
-  Ctrl+T       Add new query tab (in SQL tab)
-  Ctrl+E       Export query results (in SQL tab)
-  Ctrl+C       Copy query to clipboard (in SQL tab)
-  Alt+1-5      Switch between query tabs (in SQL tab)
+  Ctrl+Enter   Execute SQL query (in Execute SQL tab)
+  Ctrl+T       Add new query tab (in Execute SQL tab)
+  Ctrl+E       Export query results (in Execute SQL tab)
+  Ctrl+C       Copy query to clipboard (in Execute SQL tab)
+  Alt+1-5      Switch between query tabs (in Execute SQL tab)
 
 Examples:
   sqv mydata.db          Open mydata.db in the viewer
