@@ -1,6 +1,6 @@
 [project]
 name = "sqv"
-version = "0.2.0"
+version = "0.3.0"
 description = "A fast, lightweight SQLite database viewer TUI"
 readme = "README.md"
 license = "MIT"
