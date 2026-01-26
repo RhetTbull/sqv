@@ -195,6 +195,19 @@ class DataViewerTab(Vertical):
             return self.filtered_count
         return self.total_rows
 
+    def _format_cell(self, value: object) -> str:
+        """Format a cell value for display, handling binary data and escaping markup."""
+        if value is None:
+            return "NULL"
+        if isinstance(value, bytes):
+            preview_bytes = 8
+            hex_preview = " ".join(f"{b:02X}" for b in value[:preview_bytes])
+            ellipsis = "..." if len(value) > preview_bytes else ""
+            return f"<BLOB {len(value):,} bytes: {hex_preview}{ellipsis}>"
+        # Escape Rich markup characters to prevent parsing errors
+        text = str(value)
+        return text.replace("[", r"\[")
+
     def _load_data(self) -> None:
         """Load data from current table."""
         if not self.current_table:
@@ -227,7 +240,7 @@ class DataViewerTab(Vertical):
                 table_widget.add_column(label, key=col)
 
             for row in rows:
-                table_widget.add_row(*[str(v) if v is not None else "NULL" for v in row])
+                table_widget.add_row(*[self._format_cell(v) for v in row])
 
             loaded = len(rows)
             start = self.current_offset + 1 if loaded > 0 else 0
@@ -291,5 +304,7 @@ class DataViewerTab(Vertical):
             return
         effective_count = self._get_effective_count()
         if effective_count > self.PAGE_SIZE:
-            self.current_offset = ((effective_count - 1) // self.PAGE_SIZE) * self.PAGE_SIZE
+            self.current_offset = (
+                (effective_count - 1) // self.PAGE_SIZE
+            ) * self.PAGE_SIZE
             self._load_data()

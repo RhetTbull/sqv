@@ -178,6 +178,19 @@ class QueryPane(Vertical):
         table = self.query_one(f"#results-{self.query_id}", DataTable)
         table.cursor_type = "row"
 
+    def _format_cell(self, value: object) -> str:
+        """Format a cell value for display, handling binary data and escaping markup."""
+        if value is None:
+            return "NULL"
+        if isinstance(value, bytes):
+            preview_bytes = 8
+            hex_preview = " ".join(f"{b:02X}" for b in value[:preview_bytes])
+            ellipsis = "..." if len(value) > preview_bytes else ""
+            return f"<BLOB {len(value):,} bytes: {hex_preview}{ellipsis}>"
+        # Escape Rich markup characters to prevent parsing errors
+        text = str(value)
+        return text.replace("[", r"\[")
+
     def execute_sql(self) -> None:
         """Execute the SQL in this pane's input."""
         sql_input = self.query_one(f"#sql-input-{self.query_id}", TextArea)
@@ -203,7 +216,7 @@ class QueryPane(Vertical):
                 results_table.add_column(col, key=col)
 
             for row in rows:
-                results_table.add_row(*[str(v) if v is not None else "NULL" for v in row])
+                results_table.add_row(*[self._format_cell(v) for v in row])
 
             status.update(f"Success: {len(rows)} rows returned in {elapsed:.4f}s")
 
@@ -299,7 +312,9 @@ class SQLTab(Vertical):
 
         self.query_count += 1
         tabs = self.query_one("#query-tabs", TabbedContent)
-        new_pane = TabPane(f"Query {self.query_count}", id=f"query-pane-{self.query_count}")
+        new_pane = TabPane(
+            f"Query {self.query_count}", id=f"query-pane-{self.query_count}"
+        )
         new_pane.compose_add_child(QueryPane(self.db, self.query_count))
         tabs.add_pane(new_pane)
         tabs.active = f"query-pane-{self.query_count}"

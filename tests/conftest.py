@@ -19,7 +19,8 @@ def sample_db_path() -> Path:
     cursor = conn.cursor()
 
     # Create tables
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -27,9 +28,11 @@ def sample_db_path() -> Path:
             age INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -37,36 +40,43 @@ def sample_db_path() -> Path:
             content TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE empty_table (
             id INTEGER PRIMARY KEY,
             value TEXT
         )
-    """)
+    """
+    )
 
     # Create index
     cursor.execute("CREATE INDEX idx_users_email ON users(email)")
     cursor.execute("CREATE INDEX idx_posts_user ON posts(user_id)")
 
     # Create view
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE VIEW user_post_counts AS
         SELECT u.id, u.name, COUNT(p.id) as post_count
         FROM users u
         LEFT JOIN posts p ON u.id = p.user_id
         GROUP BY u.id
-    """)
+    """
+    )
 
     # Create trigger
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TRIGGER update_timestamp
         AFTER UPDATE ON users
         BEGIN
             UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END
-    """)
+    """
+    )
 
     # Insert sample data
     users_data = [
@@ -108,6 +118,41 @@ def db(sample_db_path: Path) -> DatabaseConnection:
 
 
 @pytest.fixture
+def blob_db_path() -> Path:
+    """Create a database with binary data for BLOB handling tests."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = Path(f.name)
+
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        CREATE TABLE blobs (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            data BLOB
+        )
+    """
+    )
+
+    # Insert rows with binary data, including bytes that look like Rich markup
+    blob_data = [
+        (1, "simple", b"\x00\x01\x02\x03"),
+        (2, "with_brackets", b"[test]data[/test]"),
+        (3, "large", b"\xb4|\x05xSg\xfb\xfeyO\x926" * 1000),
+    ]
+    cursor.executemany("INSERT INTO blobs (id, name, data) VALUES (?, ?, ?)", blob_data)
+
+    conn.commit()
+    conn.close()
+
+    yield db_path
+
+    db_path.unlink(missing_ok=True)
+
+
+@pytest.fixture
 def large_db_path() -> Path:
     """Create a database with many rows for pagination testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -116,13 +161,15 @@ def large_db_path() -> Path:
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE numbers (
             id INTEGER PRIMARY KEY,
             value INTEGER,
             label TEXT
         )
-    """)
+    """
+    )
 
     # Insert 500 rows
     data = [(i, i * 10, f"Label {i}") for i in range(1, 501)]

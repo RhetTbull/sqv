@@ -128,3 +128,42 @@ def test_windowing(large_db_path: Path) -> None:
 
     finally:
         db.close()
+
+
+def test_binary_data(blob_db_path: Path) -> None:
+    """Test handling of binary (BLOB) data."""
+    from sqv.widgets.data_viewer import DataViewerTab
+
+    db = DatabaseConnection(str(blob_db_path))
+
+    try:
+        _, rows = db.fetch_rows("blobs")
+        assert len(rows) == 3
+
+        # Test that binary data is returned as bytes
+        assert isinstance(rows[0][2], bytes)
+        assert isinstance(rows[1][2], bytes)
+        assert isinstance(rows[2][2], bytes)
+
+        # Test the _format_cell method handles binary data
+        # Create a minimal DataViewerTab to test the method
+        viewer = DataViewerTab(db)
+
+        # Test NULL handling
+        assert viewer._format_cell(None) == "NULL"
+
+        # Test binary data formatting with hex preview
+        assert viewer._format_cell(b"\x00\x01\x02\x03") == "<BLOB 4 bytes: 00 01 02 03>"
+        assert viewer._format_cell(b"[test]") == "<BLOB 6 bytes: 5B 74 65 73 74 5D>"
+
+        # Test large blob (shows first 8 bytes with ellipsis)
+        large_blob = b"\xb4|\x05\x00\x11\x22\x33\x44\x55\x66" * 100
+        result = viewer._format_cell(large_blob)
+        assert result == "<BLOB 1,000 bytes: B4 7C 05 00 11 22 33 44...>"
+
+        # Test Rich markup escaping in regular strings
+        assert viewer._format_cell("[bold]text[/bold]") == r"\[bold]text\[/bold]"
+        assert viewer._format_cell("normal text") == "normal text"
+
+    finally:
+        db.close()
