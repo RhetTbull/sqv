@@ -215,6 +215,8 @@ class QueryPane(Vertical):
         elif event.button.id == "last-page":
             self._last_page()
 
+    MAX_CELL_LENGTH = 100
+
     def _format_cell(self, value: object) -> str:
         """Format a cell value for display, handling binary data and escaping markup."""
         if value is None:
@@ -224,8 +226,11 @@ class QueryPane(Vertical):
             hex_preview = " ".join(f"{b:02X}" for b in value[:preview_bytes])
             ellipsis = "..." if len(value) > preview_bytes else ""
             return f"<BLOB {len(value):,} bytes: {hex_preview}{ellipsis}>"
-        # Escape Rich markup characters to prevent parsing errors
+        # Convert to string and truncate if too long
         text = str(value)
+        if len(text) > self.MAX_CELL_LENGTH:
+            text = text[: self.MAX_CELL_LENGTH] + "..."
+        # Escape Rich markup characters to prevent parsing errors
         return text.replace("[", r"\[")
 
     def execute_sql(self) -> None:

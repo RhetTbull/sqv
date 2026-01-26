@@ -192,8 +192,10 @@ class DataViewerTab(Vertical):
                     self.filtered_count = rows[0][0]
                 except Exception:
                     self.filtered_count = 0
-            return self.filtered_count
+            return self.filtered_count or 0
         return self.total_rows
+
+    MAX_CELL_LENGTH = 120
 
     def _format_cell(self, value: object) -> str:
         """Format a cell value for display, handling binary data and escaping markup."""
@@ -204,8 +206,11 @@ class DataViewerTab(Vertical):
             hex_preview = " ".join(f"{b:02X}" for b in value[:preview_bytes])
             ellipsis = "..." if len(value) > preview_bytes else ""
             return f"<BLOB {len(value):,} bytes: {hex_preview}{ellipsis}>"
-        # Escape Rich markup characters to prevent parsing errors
+        # Convert to string and truncate if too long
         text = str(value)
+        if len(text) > self.MAX_CELL_LENGTH:
+            text = text[: self.MAX_CELL_LENGTH] + "..."
+        # Escape Rich markup characters to prevent parsing errors
         return text.replace("[", r"\[")
 
     def _load_data(self) -> None:
