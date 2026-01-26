@@ -186,7 +186,7 @@ class QueryPane(Vertical):
 
     def compose(self) -> ComposeResult:
         yield TextArea(
-            "SELECT * FROM sqlite_master LIMIT 10;",
+            "",
             language="sql",
             id=f"sql-input-{self.query_id}",
         )
@@ -592,3 +592,12 @@ class SQLTab(Vertical):
         query_pane = self._get_active_query_pane()
         if query_pane:
             query_pane.view_current_cell()
+
+    def focus_input(self) -> None:
+        """Focus the SQL input of the active query pane."""
+        query_pane = self._get_active_query_pane()
+        if query_pane:
+            sql_input = query_pane.query_one(
+                f"#sql-input-{query_pane.query_id}", TextArea
+            )
+            sql_input.focus()

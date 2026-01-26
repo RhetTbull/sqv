@@ -96,6 +96,15 @@ class SQVApp(App):
         tabs = self.query_one("#tabs", TabbedContent)
         tabs.active = tab_id
 
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        """Handle tab activation to focus appropriate widget."""
+        if event.pane.id == "sql":
+            # Focus the SQL input when switching to Execute SQL tab
+            sql_tab = self.query_one(SQLTab)
+            self.call_later(sql_tab.focus_input)
+
     def on_unmount(self) -> None:
         """Clean up database connection."""
         if self.db:
