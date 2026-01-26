@@ -63,7 +63,7 @@ class SQVApp(App):
         Binding("d", "switch_tab('structure')", "Database Structure", show=True),
         Binding("b", "switch_tab('data')", "Browse Data", show=True),
         Binding("e", "switch_tab('sql')", "Execute SQL", show=True),
-        Binding("q", "quit", "Quit", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
     def __init__(self, db_path: str) -> None:

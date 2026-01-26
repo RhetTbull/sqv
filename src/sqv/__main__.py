@@ -16,7 +16,7 @@ Key bindings:
   d            Database Structure tab
   b            Browse Data tab
   e            Execute SQL tab
-  q            Quit
+  Ctrl+Q       Quit
   Ctrl+Enter   Execute SQL query (in Execute SQL tab)
   Ctrl+T       Add new query tab (in Execute SQL tab)
   Ctrl+E       Export query results (in Execute SQL tab)

@@ -188,6 +188,7 @@ class QueryPane(Vertical):
         yield TextArea(
             "",
             language="sql",
+            theme="monokai",
             id=f"sql-input-{self.query_id}",
         )
         yield DataTable(id=f"results-{self.query_id}")
