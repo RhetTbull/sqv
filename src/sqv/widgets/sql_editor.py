@@ -2,9 +2,11 @@
 
 import csv
 import json
+import re
 import time
 from pathlib import Path
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -14,6 +16,7 @@ from textual.widgets import (
     DataTable,
     Input,
     Label,
+    OptionList,
     Select,
     Static,
     TabbedContent,
@@ -25,6 +28,278 @@ from sqv.db import DatabaseConnection
 from sqv.widgets.cell_viewer import CellViewerScreen
 
 MAX_QUERIES = 5
+
+SQL_KEYWORDS = [
+    "ABORT",
+    "ACTION",
+    "ADD",
+    "AFTER",
+    "ALL",
+    "ALTER",
+    "ANALYZE",
+    "AND",
+    "AS",
+    "ASC",
+    "ATTACH",
+    "AUTOINCREMENT",
+    "BEFORE",
+    "BEGIN",
+    "BETWEEN",
+    "BY",
+    "CASCADE",
+    "CASE",
+    "CAST",
+    "CHECK",
+    "COLLATE",
+    "COLUMN",
+    "COMMIT",
+    "CONFLICT",
+    "CONSTRAINT",
+    "CREATE",
+    "CROSS",
+    "CURRENT_DATE",
+    "CURRENT_TIME",
+    "CURRENT_TIMESTAMP",
+    "DATABASE",
+    "DEFAULT",
+    "DEFERRABLE",
+    "DEFERRED",
+    "DELETE",
+    "DESC",
+    "DISTINCT",
+    "DROP",
+    "EACH",
+    "ELSE",
+    "END",
+    "ESCAPE",
+    "EXCEPT",
+    "EXCLUSIVE",
+    "EXISTS",
+    "EXPLAIN",
+    "FAIL",
+    "FILTER",
+    "FOR",
+    "FOREIGN",
+    "FROM",
+    "FULL",
+    "GLOB",
+    "GROUP",
+    "HAVING",
+    "IF",
+    "IGNORE",
+    "IMMEDIATE",
+    "IN",
+    "INDEX",
+    "INDEXED",
+    "INITIALLY",
+    "INNER",
+    "INSERT",
+    "INSTEAD",
+    "INTERSECT",
+    "INTO",
+    "IS",
+    "ISNULL",
+    "JOIN",
+    "KEY",
+    "LEFT",
+    "LIKE",
+    "LIMIT",
+    "MATCH",
+    "NATURAL",
+    "NO",
+    "NOT",
+    "NOTNULL",
+    "NULL",
+    "OF",
+    "OFFSET",
+    "ON",
+    "OR",
+    "ORDER",
+    "OUTER",
+    "PLAN",
+    "PRAGMA",
+    "PRIMARY",
+    "QUERY",
+    "RAISE",
+    "RECURSIVE",
+    "REFERENCES",
+    "REGEXP",
+    "REINDEX",
+    "RELEASE",
+    "RENAME",
+    "REPLACE",
+    "RESTRICT",
+    "RIGHT",
+    "ROLLBACK",
+    "ROW",
+    "SAVEPOINT",
+    "SELECT",
+    "SET",
+    "TABLE",
+    "TEMP",
+    "TEMPORARY",
+    "THEN",
+    "TO",
+    "TRANSACTION",
+    "TRIGGER",
+    "UNION",
+    "UNIQUE",
+    "UPDATE",
+    "USING",
+    "VACUUM",
+    "VALUES",
+    "VIEW",
+    "VIRTUAL",
+    "WHEN",
+    "WHERE",
+    "WITH",
+    "WITHOUT",
+]
+
+
+class SQLTextArea(TextArea):
+    """TextArea with simple inline SQL autocompletion."""
+
+    WORD_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\\.]*)$")
+    MAX_SUGGESTIONS = 12
+
+    def __init__(
+        self,
+        completions: list[str],
+        table_columns: dict[str, list[str]],
+        suggestion_list: OptionList,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._completions = completions
+        self._table_columns = table_columns
+        self._suggestion_list = suggestion_list
+
+    def update_suggestion(self) -> None:
+        """Update the inline suggestion based on current cursor position."""
+        context = self.get_completion_context()
+        self.suggestion = ""
+        if not context:
+            return
+        token, _start, _end, suggestions = context
+        if not suggestions:
+            return
+        best = suggestions[0]
+        if best == token:
+            return
+        self.suggestion = best[len(token) :]
+
+    def watch_selection(self, _selection) -> None:
+        """Refresh suggestions when the cursor moves."""
+        self.update_suggestion()
+
+    def on_key(self, event: events.Key) -> None:
+        if not self._suggestion_list.display:
+            return
+        if event.key == "down":
+            self._move_suggestion(1)
+            event.stop()
+        elif event.key == "up":
+            self._move_suggestion(-1)
+            event.stop()
+        elif event.key == "pageup":
+            self._move_suggestion(-5)
+            event.stop()
+        elif event.key == "pagedown":
+            self._move_suggestion(5)
+            event.stop()
+        elif event.key == "tab":
+            if self._apply_highlighted_suggestion():
+                event.stop()
+        elif event.key == "escape":
+            self._suggestion_list.display = False
+            event.stop()
+
+    def on_blur(self, event: events.Blur) -> None:
+        if self._suggestion_list.display:
+            self._suggestion_list.display = False
+
+    def get_completion_context(
+        self,
+    ) -> tuple[str, tuple[int, int], tuple[int, int], list[str]] | None:
+        row, col = self.cursor_location
+        if row < 0 or row >= len(self.document.lines):
+            return None
+
+        line = self.document.lines[row]
+        if col < len(line):
+            next_char = line[col]
+            if next_char.isalnum() or next_char == "_" or next_char == ".":
+                return None
+
+        prefix = line[:col]
+        match = self.WORD_RE.search(prefix)
+        if not match:
+            return None
+
+        token = match.group(1)
+        if not token:
+            return None
+
+        candidates = self._completions
+        if "." in token:
+            table_prefix = token.split(".", 1)[0]
+            for table_name, columns in self._table_columns.items():
+                if table_name.lower() == table_prefix.lower():
+                    candidates = [f"{table_name}.{col}" for col in columns]
+                    break
+
+        token_lower = token.lower()
+        matched = [
+            self._apply_case(candidate, token)
+            for candidate in candidates
+            if candidate.lower().startswith(token_lower)
+        ]
+        if not matched:
+            return None
+
+        matched.sort(key=lambda value: (len(value), value))
+        suggestions = matched[: self.MAX_SUGGESTIONS]
+        start_col = match.start(1)
+        return token, (row, start_col), (row, col), suggestions
+
+    def apply_completion(self, completion: str) -> None:
+        context = self.get_completion_context()
+        if not context:
+            return
+        _token, start, end, _suggestions = context
+        result = self.replace(completion, start, end)
+        self.cursor_location = result.end_location
+        self.update_suggestion()
+
+    def _apply_highlighted_suggestion(self) -> bool:
+        option = self._suggestion_list.highlighted_option
+        if not option:
+            return False
+        self.apply_completion(str(option.prompt))
+        self._suggestion_list.display = False
+        return True
+
+    def _move_suggestion(self, delta: int) -> None:
+        option_list = self._suggestion_list
+        if not option_list.options:
+            return
+        if option_list.highlighted is None:
+            option_list.highlighted = 0
+        else:
+            option_list.highlighted = max(
+                0, min(option_list.highlighted + delta, len(option_list.options) - 1)
+            )
+        option_list.scroll_to_highlight()
+
+    @staticmethod
+    def _apply_case(candidate: str, token: str) -> str:
+        if token.islower():
+            return candidate.lower()
+        if token.isupper():
+            return candidate.upper()
+        return candidate
 
 
 class ExportScreen(ModalScreen[tuple[str, str] | None]):
@@ -143,6 +418,13 @@ class QueryPane(Vertical):
         border: solid $primary;
     }
 
+    QueryPane > .sql-suggestions {
+        height: auto;
+        max-height: 8;
+        border: solid $primary;
+        background: $surface;
+    }
+
     QueryPane > DataTable {
         height: 1fr;
         border: solid $primary;
@@ -178,6 +460,8 @@ class QueryPane(Vertical):
         super().__init__()
         self.db = db
         self.query_id = query_id
+        self._table_columns = self._build_table_columns()
+        self._completions = self._build_completions()
         self.last_columns: list[str] = []
         self.last_rows: list[tuple] = []
         self.current_offset = 0
@@ -185,12 +469,19 @@ class QueryPane(Vertical):
         self._last_select: tuple[int, int, float] = (-1, -1, 0.0)  # row, col, time
 
     def compose(self) -> ComposeResult:
-        yield TextArea(
+        suggestions = OptionList(
+            id=f"sql-suggestions-{self.query_id}", classes="sql-suggestions"
+        )
+        yield SQLTextArea(
+            self._completions,
+            self._table_columns,
+            suggestions,
             "",
             language="sql",
             theme="monokai",
             id=f"sql-input-{self.query_id}",
         )
+        yield suggestions
         yield DataTable(id=f"results-{self.query_id}")
         with Horizontal(id="nav-bar"):
             yield Button("◀◀", id="first-page", disabled=True)
@@ -199,13 +490,34 @@ class QueryPane(Vertical):
             yield Button("Next ▶", id="next-page", disabled=True)
             yield Button("▶▶", id="last-page", disabled=True)
         yield Static(
-            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate",
+            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate | Tab to accept",
             id=f"status-{self.query_id}",
             classes="status",
         )
 
+    def _build_table_columns(self) -> dict[str, list[str]]:
+        table_columns: dict[str, list[str]] = {}
+        for table in self.db.get_tables():
+            try:
+                table_columns[table] = [col[0] for col in self.db.get_columns(table)]
+            except Exception:
+                table_columns[table] = []
+        return table_columns
+
+    def _build_completions(self) -> list[str]:
+        tables = self.db.get_tables()
+        views = self.db.get_views()
+        columns = sorted({col for cols in self._table_columns.values() for col in cols})
+        completions = list(SQL_KEYWORDS)
+        completions.extend(tables)
+        completions.extend(views)
+        completions.extend(columns)
+        return completions
+
     def on_mount(self) -> None:
         """Set up the results table."""
+        suggestions = self.query_one(f"#sql-suggestions-{self.query_id}", OptionList)
+        suggestions.display = False
         table = self.query_one(f"#results-{self.query_id}", DataTable)
         table.cursor_type = "cell"
 
@@ -219,6 +531,23 @@ class QueryPane(Vertical):
             self._first_page()
         elif event.button.id == "last-page":
             self._last_page()
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        if event.text_area.id == f"sql-input-{self.query_id}":
+            self._refresh_suggestions()
+
+    def on_text_area_selection_changed(self, event: TextArea.SelectionChanged) -> None:
+        if event.text_area.id == f"sql-input-{self.query_id}":
+            self._refresh_suggestions()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != f"sql-suggestions-{self.query_id}":
+            return
+        sql_input = self.query_one(f"#sql-input-{self.query_id}", SQLTextArea)
+        sql_input.apply_completion(str(event.option.prompt))
+        event.option_list.display = False
+        sql_input.focus()
+        event.stop()
 
     def on_data_table_cell_highlighted(self, event: DataTable.CellHighlighted) -> None:
         """Track highlighted cell for Enter key detection."""
@@ -255,6 +584,30 @@ class QueryPane(Vertical):
 
         # Track this selection for double-click detection
         self._last_select = (row_idx, col_idx, now)
+
+    def _refresh_suggestions(self) -> None:
+        sql_input = self.query_one(f"#sql-input-{self.query_id}", SQLTextArea)
+        suggestions = self.query_one(f"#sql-suggestions-{self.query_id}", OptionList)
+        if not sql_input.has_focus:
+            suggestions.display = False
+            return
+
+        context = sql_input.get_completion_context()
+        if not context:
+            suggestions.display = False
+            suggestions.clear_options()
+            return
+
+        _token, _start, _end, items = context
+        if not items:
+            suggestions.display = False
+            suggestions.clear_options()
+            return
+
+        suggestions.clear_options()
+        suggestions.add_options(items)
+        suggestions.highlighted = 0
+        suggestions.display = True
 
     def _show_cell_viewer(self, row_idx: int, col_idx: int) -> None:
         """Show the cell viewer modal for the given cell."""
