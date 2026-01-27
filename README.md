@@ -4,9 +4,9 @@ A fast, lightweight SQLite database viewer TUI built with Python and Textual.
 
 ## Features
 
-- **Structure Tab**: Browse tables, indices, views, and triggers with their SQL definitions
+- **Database Structure Tab**: Browse tables, indices, views, and triggers with their SQL definitions
 - **Data Tab**: View table data with sorting and filtering
-- **SQL Tab**: Execute arbitrary SQL queries
+- **Execute SQL Query Tab**: Execute arbitrary SQL queries
 
 ## Screenshots
 
@@ -55,3 +55,11 @@ sqv <database.db>
 | Ctrl+q | Quit |
 | Ctrl+Enter | Execute SQL (in SQL tab) |
 | ? | Show help |
+
+## See Also
+
+sqv is not intended to be a full SQL IDE. I built it to do exactly the things I wanted and nothing else. If you find sqv doesn't suit your needs, you might find one of these more full featured alternatives does:
+
+* [harlequin](https://github.com/tconbeer/harlequin): The SQL IDE for your terminal
+* [sqlit](https://github.com/Maxteabag/sqlit): A user friendly TUI for SQL databases. Written in python. Supports SQL server, Mysql, PostreSQL, SQLite, Turso and more.
+* [litecli](https://github.com/dbcli/litecli): CLI for SQLite Databases with auto-completion and syntax highlighting
