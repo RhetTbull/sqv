@@ -1,6 +1,9 @@
 """Cell viewer modal for displaying full cell contents."""
 
 import json
+import math
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -11,6 +14,9 @@ from textual.widgets import Label, TextArea
 
 class CellViewerScreen(ModalScreen[None]):
     """Modal screen for viewing full cell content."""
+
+    UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+    MACOS_EPOCH = datetime(2001, 1, 1, tzinfo=UTC)
 
     DEFAULT_CSS = """
     CellViewerScreen {
@@ -61,11 +67,10 @@ class CellViewerScreen(ModalScreen[None]):
         except (json.JSONDecodeError, TypeError):
             return False, value
 
-    def compose(self) -> ComposeResult:
-        # Format the value for display
-        is_json = False
+    def _format_raw_value(self) -> tuple[bool, str]:
+        """Format the raw value using the same rendering as the existing viewer."""
         if self.raw_value is None:
-            display_value = "NULL"
+            return False, "NULL"
         elif isinstance(self.raw_value, bytes):
             # Show hex dump for binary data
             hex_lines = []
@@ -75,24 +80,72 @@ class CellViewerScreen(ModalScreen[None]):
                 hex_part = " ".join(f"{b:02X}" for b in chunk)
                 ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
                 hex_lines.append(f"{i:08X}  {hex_part:<48}  {ascii_part}")
-            display_value = f"BLOB ({len(data):,} bytes)\n\n" + "\n".join(hex_lines)
+            return False, f"BLOB ({len(data):,} bytes)\n\n" + "\n".join(hex_lines)
         else:
             display_value = str(self.raw_value)
             # Check if it's JSON
-            is_json, display_value = self._is_json(display_value)
+            return self._is_json(display_value)
 
+    def _get_numeric_value(self) -> Decimal | None:
+        """Return the value as a finite decimal if it is clearly numeric."""
+        if not isinstance(self.raw_value, int | float) or isinstance(
+            self.raw_value, bool
+        ):
+            return None
+
+        number = Decimal(str(self.raw_value))
+        if not number.is_finite():
+            return None
+        return number
+
+    def _format_value_with_commas(self) -> str:
+        """Format a numeric value with thousands separators."""
+        number = self._get_numeric_value()
+        if number is None:
+            return "N/A (not numeric)"
+        return f"{number:,f}"
+
+    def _format_datetime_from_epoch(self, epoch: datetime) -> str:
+        """Format the numeric value as a UTC date/time from the supplied epoch."""
+        number = self._get_numeric_value()
+        if number is None:
+            return "N/A (not numeric)"
+
+        try:
+            seconds = float(number)
+            if not math.isfinite(seconds):
+                return "N/A (not numeric)"
+            date_time = epoch + timedelta(seconds=seconds)
+        except (OverflowError, ValueError):
+            return "N/A (out of range)"
+
+        return date_time.isoformat().replace("+00:00", "Z")
+
+    def _build_display_value(self) -> str:
+        """Build the complete text shown in the cell viewer."""
+        _is_json, raw_value = self._format_raw_value()
+        sections = [("Raw value", raw_value)]
+        if self._get_numeric_value() is not None:
+            sections.extend(
+                [
+                    ("Raw value with commas", self._format_value_with_commas()),
+                    (
+                        "Unix date/time (UTC)",
+                        self._format_datetime_from_epoch(self.UNIX_EPOCH),
+                    ),
+                    (
+                        "macOS date/time (UTC)",
+                        self._format_datetime_from_epoch(self.MACOS_EPOCH),
+                    ),
+                ]
+            )
+        return "\n\n".join(f"{label}:\n{value}" for label, value in sections)
+
+    def compose(self) -> ComposeResult:
+        display_value = self._build_display_value()
         with Vertical():
             yield Label(f"Column: {self.column_name}")
-            if is_json:
-                yield TextArea(
-                    display_value,
-                    read_only=True,
-                    language="json",
-                    theme="monokai",
-                    id="cell-content",
-                )
-            else:
-                yield TextArea(display_value, read_only=True, id="cell-content")
+            yield TextArea(display_value, read_only=True, id="cell-content")
             yield Label("Press Escape to close", classes="hint")
 
     def action_close(self) -> None:

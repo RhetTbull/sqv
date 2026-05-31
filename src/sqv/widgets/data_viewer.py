@@ -77,6 +77,7 @@ class DataViewerTab(Vertical):
         Binding("home", "first_page", "First Page", show=False),
         Binding("end", "last_page", "Last Page", show=False),
         Binding("enter", "view_cell", "View Cell", show=False),
+        Binding("space", "view_cell", "View Cell", show=False),
     ]
 
     def __init__(self, db: DatabaseConnection) -> None:
