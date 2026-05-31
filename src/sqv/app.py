@@ -24,7 +24,7 @@ HELP_TEXT = """\
 [b u]Browse Data Tab[/b u]
   [b]PgUp/PgDn[/b]  Navigate pages
   [b]Home/End[/b]   First/last page
-  [b]Enter[/b]      View cell contents
+  [b]Enter/Space[/b] View cell contents
   [b]↑↓←→[/b]       Navigate cells
   Click column header to sort
 
