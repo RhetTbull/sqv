@@ -209,7 +209,7 @@ class SQLTextArea(TextArea):
         elif event.key == "pagedown":
             self._move_suggestion(5)
             event.stop()
-        elif event.key == "tab":
+        elif event.key in {"tab", "enter"}:
             if self._apply_highlighted_suggestion():
                 event.stop()
         elif event.key == "escape":
@@ -490,7 +490,7 @@ class QueryPane(Vertical):
             yield Button("Next ▶", id="next-page", disabled=True)
             yield Button("▶▶", id="last-page", disabled=True)
         yield Static(
-            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate | Tab to accept",
+            "Ctrl+Enter to run | Ctrl+E to export | PgUp/PgDn to navigate | Tab/Enter to accept",
             id=f"status-{self.query_id}",
             classes="status",
         )

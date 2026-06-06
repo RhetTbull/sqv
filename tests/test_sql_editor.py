@@ -3,8 +3,21 @@
 import sqlite3
 
 import pytest
+from textual.widgets import OptionList
 
 from sqv.db import DatabaseConnection
+from sqv.widgets.sql_editor import SQLTextArea
+
+
+class KeyEventStub:
+    """Minimal key event stub for direct SQLTextArea key handling tests."""
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        self.stopped = False
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
 def test_execute_select(db: DatabaseConnection) -> None:
@@ -119,3 +132,20 @@ def test_multiple_statements_error(db: DatabaseConnection) -> None:
     """Test that multiple statements raise an error."""
     with pytest.raises(sqlite3.ProgrammingError):
         db.execute_sql("SELECT 1; SELECT 2;")
+
+
+def test_enter_accepts_highlighted_autocomplete_suggestion() -> None:
+    """Enter accepts the highlighted SQL autocomplete suggestion."""
+    suggestions = OptionList("users")
+    suggestions.display = True
+    suggestions.highlighted = 0
+    editor = SQLTextArea(["users"], {}, suggestions, "us")
+    editor.cursor_location = (0, 2)
+    event = KeyEventStub("enter")
+
+    editor.on_key(event)
+
+    assert editor.text == "users"
+    assert editor.cursor_location == (0, 5)
+    assert suggestions.display is False
+    assert event.stopped is True
