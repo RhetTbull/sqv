@@ -1,5 +1,7 @@
 """Tests for the cell viewer modal."""
 
+import plistlib
+
 from sqv.widgets.cell_viewer import CellViewerScreen
 
 
@@ -53,3 +55,54 @@ def test_build_display_value_preserves_raw_rendering() -> None:
     assert "Raw value with commas" not in display_value
     assert "Unix date/time" not in display_value
     assert "macOS date/time" not in display_value
+
+
+def test_binary_plist_defaults_to_hex_dump() -> None:
+    """Binary plists still show the raw blob until decoded view is toggled."""
+    plist_data = plistlib.dumps({"name": "Alice"}, fmt=plistlib.FMT_BINARY)
+    viewer = CellViewerScreen("payload", plist_data)
+
+    display_value = viewer._build_display_value()
+
+    assert display_value.startswith("Raw value:\nBLOB")
+    assert "62 70 6C 69 73 74 30 30" in display_value
+    assert "Decoded binary plist" not in display_value
+    assert viewer._hint_text() == "Press P to show decoded plist | Press Escape to close"
+
+
+def test_binary_plist_decoded_view_shows_key_value_pairs() -> None:
+    """Binary plists can replace the hex dump with readable key/value text."""
+    plist_data = plistlib.dumps(
+        {
+            "name": "Alice",
+            "count": 3,
+            "enabled": True,
+            "tags": ["red", "blue"],
+            "metadata": {"kind": "example"},
+        },
+        fmt=plistlib.FMT_BINARY,
+    )
+    viewer = CellViewerScreen("payload", plist_data)
+    viewer._show_decoded_plist = True
+
+    display_value = viewer._build_display_value()
+
+    assert display_value.startswith("Raw value:\nDecoded binary plist\n\n")
+    assert "name: \"Alice\"" in display_value
+    assert "count: 3" in display_value
+    assert "enabled: true" in display_value
+    assert "tags:\n  - \"red\"\n  - \"blue\"" in display_value
+    assert "metadata:\n  kind: \"example\"" in display_value
+    assert "BLOB" not in display_value
+    assert viewer._hint_text() == "Press P to hide decoded plist | Press Escape to close"
+
+
+def test_invalid_binary_plist_shows_decode_error_when_toggled() -> None:
+    """Invalid bplist blobs keep the hex dump and report decode failures."""
+    viewer = CellViewerScreen("payload", b"bplist00not a real plist")
+    viewer._show_decoded_plist = True
+
+    display_value = viewer._build_display_value()
+
+    assert display_value.startswith("Raw value:\nUnable to decode binary plist:")
+    assert "\n\nBLOB" in display_value
