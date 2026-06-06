@@ -39,6 +39,7 @@ HELP_TEXT = """\
 
 [b u]Cell Viewer[/b u]
   [b]Escape[/b]     Close viewer
+  [b]P[/b]          Toggle decoded plist for binary plist blobs
 
 [dim]Press Escape or ? to close this help[/dim]
 """
